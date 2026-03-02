@@ -49,3 +49,5 @@ DEFAULT_FONT_SIZE_LARGE: Final[int] = 32
 DEFAULT_MUSIC_VOLUME: Final[float] = 0.5
 DEFAULT_SFX_VOLUME: Final[float] = 0.8
 
+ORACLE_QUESTION_COST: Final[int] = 5
+

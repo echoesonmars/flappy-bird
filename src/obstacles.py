@@ -10,8 +10,10 @@ from . import settings
 
 
 class PipePair:
-    def __init__(self, assets: AssetBundle, x: int) -> None:
+    def __init__(self, assets: AssetBundle, x: int, gap: int, speed_x: float) -> None:
         self.assets = assets
+        self.gap = gap
+        self.speed_x = speed_x
 
         pipe_surface = self.assets.sprites["pipe_green"]
         self.image_top = pygame.transform.flip(pipe_surface, False, True)
@@ -26,14 +28,13 @@ class PipePair:
 
     def _set_initial_position(self, x: int) -> None:
         gap_y = random.randint(120, settings.HEIGHT - 120)
-        gap_half = settings.PIPE_GAP_START // 2
+        gap_half = self.gap // 2
 
         self.rect_top.midbottom = (x, gap_y - gap_half)
         self.rect_bottom.midtop = (x, gap_y + gap_half)
 
     def update(self, dt: float) -> None:
-        speed_x = -120  # пикселей в секунду
-        dx = int(speed_x * dt)
+        dx = int(self.speed_x * dt)
 
         self.rect_top.x += dx
         self.rect_bottom.x += dx

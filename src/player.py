@@ -33,19 +33,19 @@ class Player(pygame.sprite.Sprite):
         self.velocity_y = settings.JUMP_FORCE
 
     def update(self, dt: float) -> None:
-        # Физика
         self.velocity_y += settings.GRAVITY
         self.rect.y += int(self.velocity_y)
 
-        # Анимация
         self.frame_index += self.animation_speed * dt
         if self.frame_index >= len(self.frames):
             self.frame_index = 0.0
 
         current_frame = self.frames[int(self.frame_index)]
 
-        # Наклон в зависимости от скорости
-        angle = -self.velocity_y * 4  # подбираемый коэффициент
+        angle = -self.velocity_y * 4
         self.image = pygame.transform.rotate(current_frame, angle)
         self.rect = self.image.get_rect(center=self.rect.center)
+
+    def draw(self, surface: pygame.Surface) -> None:
+        surface.blit(self.image, self.rect)
 

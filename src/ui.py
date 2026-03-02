@@ -87,6 +87,12 @@ class MainMenuScreen(Screen):
         title_rect = title.get_rect(center=(settings.WIDTH // 2, 80))
         surface.blit(title, title_rect)
 
+        if self.save_data is not None:
+            meta_text = f"Рекорд: {self.save_data.high_score}  |  Валюта: {self.save_data.currency}"
+            meta = self._small_font.render(meta_text, True, settings.COLOR_TEXT)
+            meta_rect = meta.get_rect(center=(settings.WIDTH // 2, 115))
+            surface.blit(meta, meta_rect)
+
         hint_main = self._small_font.render(
             "SPACE / ЛКМ — начать",
             True,
@@ -122,7 +128,7 @@ class GameScreen(Screen):
         self.pipes.clear()
         x = self._pipe_spawn_x
         for _ in range(3):
-            self.pipes.append(PipePair(self.assets, x))
+            self.pipes.append(PipePair(self.assets, x, self._current_gap(), self._current_speed()))
             x += settings.PIPE_DISTANCE_X
 
     def handle_events(self, events: Iterable[pygame.event.Event]) -> None:
@@ -153,11 +159,11 @@ class GameScreen(Screen):
 
     def _maybe_spawn_pipe(self) -> None:
         if not self.pipes:
-            self.pipes.append(PipePair(self.assets, self._pipe_spawn_x))
+            self.pipes.append(PipePair(self.assets, self._pipe_spawn_x, self._current_gap(), self._current_speed()))
             return
         last_pipe = self.pipes[-1]
         if last_pipe.rect_top.x < settings.WIDTH - settings.PIPE_DISTANCE_X:
-            self.pipes.append(PipePair(self.assets, self._pipe_spawn_x))
+            self.pipes.append(PipePair(self.assets, self._pipe_spawn_x, self._current_gap(), self._current_speed()))
 
     def _check_collisions(self) -> None:
         background = self.assets.sprites.get("background_day")
@@ -189,8 +195,9 @@ class GameScreen(Screen):
                 self.assets.sounds["point"].play()
 
     def _update_scroll(self, dt: float) -> None:
-        bg_speed = -30
-        base_speed = -120
+        difficulty = 1.0 + min(self.score, 50) * 0.02
+        bg_speed = -30 * difficulty
+        base_speed = -120 * difficulty
         self.background_x += bg_speed * dt
         self.base_x += base_speed * dt
         bg_width = self.assets.sprites["background_day"].get_width()
@@ -199,6 +206,15 @@ class GameScreen(Screen):
             self.background_x += bg_width
         if self.base_x <= -base_width:
             self.base_x += base_width
+
+    def _current_gap(self) -> int:
+        gap = settings.PIPE_GAP_START - self.score * 2
+        return max(70, gap)
+
+    def _current_speed(self) -> float:
+        base_speed = -120.0
+        extra = -min(self.score * 2.0, 100.0)
+        return base_speed + extra
 
     def draw(self, surface: pygame.Surface) -> None:
         background = self.assets.sprites["background_day"]
@@ -315,6 +331,8 @@ class SettingsScreen(Screen):
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     pygame.event.post(pygame.event.Event(CLOSE_SETTINGS))
+                if event.key == pygame.K_c:
+                    self._clear_progress()
                 if event.key in (pygame.K_UP, pygame.K_w):
                     self._field_index = (self._field_index - 1) % 3
                 if event.key in (pygame.K_DOWN, pygame.K_s):
@@ -345,6 +363,13 @@ class SettingsScreen(Screen):
 
     def _apply_changes(self) -> None:
         self.save_data.settings_data["openai_api_key"] = self._api_key_buffer
+
+    def _clear_progress(self) -> None:
+        self.save_data.high_score = 0
+        self.save_data.currency = 0
+        self.save_data.unlocked_skins = ["blue"]
+        self.save_data.equipped_skin = "blue"
+        self.save_data.ai_chat_history = []
 
     def update(self, dt: float) -> None:
         _ = dt
@@ -480,6 +505,12 @@ class OracleScreen(Screen):
         text = self._input_buffer.strip()
         if not text or self._waiting:
             return
+        if self.save_data.currency < settings.ORACLE_QUESTION_COST:
+            self._local_history.append(
+                {"role": "assistant", "content": "Тебе не хватает искр, чтобы обратиться к Оракулу."},
+            )
+            return
+        self.save_data.currency -= settings.ORACLE_QUESTION_COST
         self._input_buffer = ""
         self._local_history.append({"role": "user", "content": text})
         self._waiting = True

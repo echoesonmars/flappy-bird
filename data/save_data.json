@@ -1,0 +1,23 @@
+{
+  "high_score": 9,
+  "currency": 17,
+  "unlocked_skins": [
+    "blue"
+  ],
+  "equipped_skin": "blue",
+  "ai_chat_history": [
+    {
+      "role": "user",
+      "content": "щф"
+    },
+    {
+      "role": "assistant",
+      "content": "Ключ к вратам знаний ещё не активирован."
+    }
+  ],
+  "settings": {
+    "music_volume": 0.5,
+    "sfx_volume": 0.8,
+    "openai_api_key": ""
+  }
+}
