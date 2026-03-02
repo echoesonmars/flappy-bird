@@ -12,7 +12,7 @@ from . import settings
 class SaveData:
     high_score: int = 0
     currency: int = 0
-    unlocked_skins: list[str] = field(default_factory=list)
+    unlocked_skins: list[str] = field(default_factory=lambda: ["blue"])
     equipped_skin: str = "blue"
     ai_chat_history: list[Dict[str, str]] = field(default_factory=list)
     settings_data: Dict[str, Any] = field(

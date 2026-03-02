@@ -10,6 +10,7 @@ from . import settings
 from .player import Player
 from .obstacles import PipePair
 from .data_manager import SaveData
+from . import ai_core
 
 
 GAME_START = pygame.USEREVENT + 1
@@ -17,6 +18,10 @@ GAME_OVER = pygame.USEREVENT + 2
 GAME_RESTART = pygame.USEREVENT + 3
 OPEN_SETTINGS = pygame.USEREVENT + 4
 CLOSE_SETTINGS = pygame.USEREVENT + 5
+OPEN_WARDROBE = pygame.USEREVENT + 6
+CLOSE_WARDROBE = pygame.USEREVENT + 7
+OPEN_ORACLE = pygame.USEREVENT + 8
+CLOSE_ORACLE = pygame.USEREVENT + 9
 
 
 class Screen(ABC):
@@ -54,6 +59,10 @@ class MainMenuScreen(Screen):
                 pygame.event.post(pygame.event.Event(GAME_START))
             if event.type == pygame.KEYDOWN and event.key == pygame.K_s:
                 pygame.event.post(pygame.event.Event(OPEN_SETTINGS))
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_k:
+                pygame.event.post(pygame.event.Event(OPEN_WARDROBE))
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_o:
+                pygame.event.post(pygame.event.Event(OPEN_ORACLE))
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pygame.event.post(pygame.event.Event(GAME_START))
 
@@ -78,19 +87,30 @@ class MainMenuScreen(Screen):
         title_rect = title.get_rect(center=(settings.WIDTH // 2, 80))
         surface.blit(title, title_rect)
 
-        hint = self._small_font.render(
+        hint_main = self._small_font.render(
             "SPACE / ЛКМ — начать",
             True,
             settings.COLOR_TEXT,
         )
-        hint_rect = hint.get_rect(center=(settings.WIDTH // 2, 140))
-        surface.blit(hint, hint_rect)
+        hint_main_rect = hint_main.get_rect(center=(settings.WIDTH // 2, 140))
+        surface.blit(hint_main, hint_main_rect)
+
+        hint_settings = self._small_font.render(
+            "S — настройки, K — скины, O — Оракул",
+            True,
+            settings.COLOR_TEXT,
+        )
+        hint_settings_rect = hint_settings.get_rect(center=(settings.WIDTH // 2, 180))
+        surface.blit(hint_settings, hint_settings_rect)
 
 
 class GameScreen(Screen):
     def __init__(self, assets: AssetBundle, save_data: SaveData | None = None) -> None:
         super().__init__(assets, save_data)
-        self.player = Player(self.assets, "blue")
+        color = "blue"
+        if self.save_data is not None:
+            color = self.save_data.equipped_skin
+        self.player = Player(self.assets, color)
         self.pipes: list[PipePair] = []
         self.score = 0
         self.background_x = 0.0
@@ -148,18 +168,18 @@ class GameScreen(Screen):
             ground_y = settings.HEIGHT - base.get_height()
 
         if self.player.rect.bottom >= ground_y or self.player.rect.top <= 0:
-            self._trigger_game_over()
+            self._trigger_game_over("ground")
             return
 
         for pipe in self.pipes:
             if self.player.rect.colliderect(pipe.rect_top) or self.player.rect.colliderect(pipe.rect_bottom):
-                self._trigger_game_over()
+                self._trigger_game_over("pipe")
                 return
 
-    def _trigger_game_over(self) -> None:
+    def _trigger_game_over(self, reason: str) -> None:
         self.assets.sounds["hit"].play()
         self.assets.sounds["die"].play()
-        pygame.event.post(pygame.event.Event(GAME_OVER, {"score": self.score}))
+        pygame.event.post(pygame.event.Event(GAME_OVER, {"score": self.score, "reason": reason}))
 
     def _update_score(self) -> None:
         for pipe in self.pipes:
@@ -212,10 +232,16 @@ class GameScreen(Screen):
 
 
 class GameOverScreen(Screen):
-    def __init__(self, assets: AssetBundle, save_data: SaveData | None, score: int) -> None:
+    def __init__(self, assets: AssetBundle, save_data: SaveData | None, score: int, reason: str) -> None:
         super().__init__(assets, save_data)
         self.score = score
         self._font = self.assets.fonts["ui_medium"]
+        self.ai_text = ""
+        if self.save_data is not None:
+            ai_core.request_game_over_message(self.save_data, score, reason, self._on_ai_text)
+
+    def _on_ai_text(self, text: str) -> None:
+        self.ai_text = text
 
     def handle_events(self, events: Iterable[pygame.event.Event]) -> None:
         for event in events:
@@ -247,9 +273,33 @@ class GameOverScreen(Screen):
         label_rect = label.get_rect(center=(settings.WIDTH // 2, 210))
         surface.blit(label, label_rect)
 
+        if self.ai_text:
+            wrapped = self._wrap_text(self.ai_text, 26)
+            y = 240
+            for line in wrapped:
+                line_surf = self._font.render(line, True, settings.COLOR_TEXT)
+                line_rect = line_surf.get_rect(center=(settings.WIDTH // 2, y))
+                surface.blit(line_surf, line_rect)
+                y += 26
+
         hint = self._font.render("SPACE / ЛКМ — заново", True, settings.COLOR_TEXT)
-        hint_rect = hint.get_rect(center=(settings.WIDTH // 2, 260))
+        hint_rect = hint.get_rect(center=(settings.WIDTH // 2, settings.HEIGHT - 60))
         surface.blit(hint, hint_rect)
+
+    def _wrap_text(self, text: str, max_len: int) -> list[str]:
+        words = text.split()
+        lines: list[str] = []
+        current: list[str] = []
+        for w in words:
+            test = " ".join(current + [w])
+            if len(test) > max_len and current:
+                lines.append(" ".join(current))
+                current = [w]
+            else:
+                current.append(w)
+        if current:
+            lines.append(" ".join(current))
+        return lines
 
 
 class SettingsScreen(Screen):
@@ -330,4 +380,179 @@ class SettingsScreen(Screen):
             rect = label.get_rect(center=(settings.WIDTH // 2, y))
             surface.blit(label, rect)
             y += 40
+
+
+class WardrobeScreen(Screen):
+    def __init__(self, assets: AssetBundle, save_data: SaveData) -> None:
+        super().__init__(assets, save_data)
+        self._font = self.assets.fonts["ui_medium"]
+        self._small_font = self.assets.fonts["ui_small"]
+        self._skins = ["blue", "red", "yellow"]
+        self._index = 0
+
+    def handle_events(self, events: Iterable[pygame.event.Event]) -> None:
+        for event in events:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    pygame.event.post(pygame.event.Event(CLOSE_WARDROBE))
+                if event.key in (pygame.K_LEFT, pygame.K_a):
+                    self._index = (self._index - 1) % len(self._skins)
+                if event.key in (pygame.K_RIGHT, pygame.K_d):
+                    self._index = (self._index + 1) % len(self._skins)
+                if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    self._select_or_unlock()
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self._select_or_unlock()
+
+    def _select_or_unlock(self) -> None:
+        skin = self._skins[self._index]
+        if skin in self.save_data.unlocked_skins:
+            self.save_data.equipped_skin = skin
+            pygame.event.post(pygame.event.Event(CLOSE_WARDROBE))
+            return
+        cost = 20
+        if self.save_data.currency >= cost:
+            self.save_data.currency -= cost
+            self.save_data.unlocked_skins.append(skin)
+            self.save_data.equipped_skin = skin
+            pygame.event.post(pygame.event.Event(CLOSE_WARDROBE))
+
+    def update(self, dt: float) -> None:
+        _ = dt
+
+    def draw(self, surface: pygame.Surface) -> None:
+        background = self.assets.sprites["background_day"]
+        base = self.assets.sprites["base"]
+        surface.blit(background, (0, 0))
+        base_y = settings.HEIGHT - base.get_height()
+        surface.blit(base, (0, base_y))
+
+        title = self._font.render("Скины", True, settings.COLOR_TEXT)
+        title_rect = title.get_rect(center=(settings.WIDTH // 2, 80))
+        surface.blit(title, title_rect)
+
+        current_skin = self._skins[self._index]
+        frames_keys = [
+            f"bird_{current_skin}_midflap",
+        ]
+        bird_surface = self.assets.sprites[frames_keys[0]]
+        bird_rect = bird_surface.get_rect(center=(settings.WIDTH // 2, 180))
+        surface.blit(bird_surface, bird_rect)
+
+        unlocked = current_skin in self.save_data.unlocked_skins
+        cost = 20
+        if unlocked:
+            status_text = "Открыто"
+        else:
+            status_text = f"Цена: {cost} | Валюта: {self.save_data.currency}"
+
+        status = self._small_font.render(status_text, True, settings.COLOR_TEXT)
+        status_rect = status.get_rect(center=(settings.WIDTH // 2, 240))
+        surface.blit(status, status_rect)
+
+        hint = self._small_font.render("←/→ для выбора, SPACE — подтвердить", True, settings.COLOR_TEXT)
+        hint_rect = hint.get_rect(center=(settings.WIDTH // 2, settings.HEIGHT - 50))
+        surface.blit(hint, hint_rect)
+
+
+class OracleScreen(Screen):
+    def __init__(self, assets: AssetBundle, save_data: SaveData) -> None:
+        super().__init__(assets, save_data)
+        self._font = self.assets.fonts["ui_small"]
+        self._input_buffer = ""
+        self._waiting = False
+        self._local_history: list[dict[str, str]] = list(self.save_data.ai_chat_history)
+
+    def handle_events(self, events: Iterable[pygame.event.Event]) -> None:
+        for event in events:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    pygame.event.post(pygame.event.Event(CLOSE_ORACLE))
+                elif event.key == pygame.K_BACKSPACE:
+                    self._input_buffer = self._input_buffer[:-1]
+                elif event.key == pygame.K_RETURN:
+                    self._send_message()
+                else:
+                    if event.unicode:
+                        self._input_buffer += event.unicode
+
+    def _send_message(self) -> None:
+        text = self._input_buffer.strip()
+        if not text or self._waiting:
+            return
+        self._input_buffer = ""
+        self._local_history.append({"role": "user", "content": text})
+        self._waiting = True
+
+        def on_reply(answer: str) -> None:
+            self._local_history.append({"role": "assistant", "content": answer})
+            self.save_data.ai_chat_history = self._local_history[-20:]
+            self._waiting = False
+
+        ai_core.request_oracle_reply(self.save_data, self._local_history[-20:], on_reply)
+
+    def update(self, dt: float) -> None:
+        _ = dt
+
+    def draw(self, surface: pygame.Surface) -> None:
+        background = self.assets.sprites["background_night"]
+        base = self.assets.sprites["base"]
+        surface.blit(background, (0, 0))
+        base_y = settings.HEIGHT - base.get_height()
+        surface.blit(base, (0, base_y))
+
+        padding = 10
+        chat_rect = pygame.Rect(
+            padding,
+            padding,
+            settings.WIDTH - 2 * padding,
+            settings.HEIGHT - 80,
+        )
+        pygame.draw.rect(surface, (0, 0, 0, 128), chat_rect)
+
+        y = chat_rect.bottom - 20
+        for message in reversed(self._local_history[-10:]):
+            prefix = "> " if message["role"] == "user" else "● "
+            color = settings.COLOR_TEXT if message["role"] == "assistant" else (180, 220, 255)
+            wrapped_lines = self._wrap_text(prefix + message["content"], 32)
+            for line in reversed(wrapped_lines):
+                text_surf = self._font.render(line, True, color)
+                text_rect = text_surf.get_rect(left=chat_rect.left + 8, bottom=y)
+                surface.blit(text_surf, text_rect)
+                y -= 18
+                if y < chat_rect.top + 10:
+                    break
+            if y < chat_rect.top + 10:
+                break
+
+        input_rect = pygame.Rect(
+            padding,
+            settings.HEIGHT - 60,
+            settings.WIDTH - 2 * padding,
+            40,
+        )
+        pygame.draw.rect(surface, (10, 10, 20), input_rect)
+        pygame.draw.rect(surface, settings.COLOR_TEXT, input_rect, 1)
+
+        prompt = self._input_buffer or "Задай вопрос Оракулу..."
+        if self._waiting:
+            prompt = "Оракул размышляет..."
+        input_surf = self._font.render(prompt, True, settings.COLOR_TEXT)
+        input_rect_inner = input_surf.get_rect(left=input_rect.left + 8, centery=input_rect.centery)
+        surface.blit(input_surf, input_rect_inner)
+
+    def _wrap_text(self, text: str, max_len: int) -> list[str]:
+        words = text.split()
+        lines: list[str] = []
+        current: list[str] = []
+        for w in words:
+            test = " ".join(current + [w])
+            if len(test) > max_len and current:
+                lines.append(" ".join(current))
+                current = [w]
+            else:
+                current.append(w)
+        if current:
+            lines.append(" ".join(current))
+        return lines
 

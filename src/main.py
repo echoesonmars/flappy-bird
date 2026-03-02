@@ -9,6 +9,8 @@ from . import settings
 from .asset_loader import AssetBundle, load_assets
 from .ui import (
     CLOSE_SETTINGS,
+    CLOSE_ORACLE,
+    CLOSE_WARDROBE,
     GAME_OVER,
     GAME_RESTART,
     GAME_START,
@@ -16,7 +18,11 @@ from .ui import (
     GameScreen,
     MainMenuScreen,
     OPEN_SETTINGS,
+    OPEN_ORACLE,
+    OPEN_WARDROBE,
     SettingsScreen,
+    OracleScreen,
+    WardrobeScreen,
     Screen,
 )
 from .data_manager import SaveData, apply_audio_settings, load_save, save_save
@@ -48,18 +54,30 @@ class Game:
                 if event.type == GAME_START:
                     self.current_screen = GameScreen(self.assets, self.save_data)
                 if event.type == GAME_OVER:
-                    score = int(getattr(event, "score", getattr(event, "dict", {}).get("score", 0)))
+                    data = getattr(event, "dict", {})
+                    score = int(getattr(event, "score", data.get("score", 0)))
+                    reason = str(getattr(event, "reason", data.get("reason", "")))
                     if score > self.save_data.high_score:
                         self.save_data.high_score = score
                     self.save_data.currency += score
                     save_save(self.save_data)
-                    self.current_screen = GameOverScreen(self.assets, self.save_data, score)
+                    self.current_screen = GameOverScreen(self.assets, self.save_data, score, reason)
                 if event.type == GAME_RESTART:
                     self.current_screen = GameScreen(self.assets, self.save_data)
                 if event.type == OPEN_SETTINGS:
                     self.current_screen = SettingsScreen(self.assets, self.save_data)
                 if event.type == CLOSE_SETTINGS:
                     apply_audio_settings(self.save_data, self.assets.sounds)
+                    save_save(self.save_data)
+                    self.current_screen = MainMenuScreen(self.assets, self.save_data)
+                if event.type == OPEN_WARDROBE:
+                    self.current_screen = WardrobeScreen(self.assets, self.save_data)
+                if event.type == CLOSE_WARDROBE:
+                    save_save(self.save_data)
+                    self.current_screen = MainMenuScreen(self.assets, self.save_data)
+                if event.type == OPEN_ORACLE:
+                    self.current_screen = OracleScreen(self.assets, self.save_data)
+                if event.type == CLOSE_ORACLE:
                     save_save(self.save_data)
                     self.current_screen = MainMenuScreen(self.assets, self.save_data)
 
