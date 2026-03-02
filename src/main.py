@@ -8,14 +8,18 @@ import pygame
 from . import settings
 from .asset_loader import AssetBundle, load_assets
 from .ui import (
+    CLOSE_SETTINGS,
     GAME_OVER,
     GAME_RESTART,
     GAME_START,
     GameOverScreen,
     GameScreen,
     MainMenuScreen,
+    OPEN_SETTINGS,
+    SettingsScreen,
     Screen,
 )
+from .data_manager import SaveData, apply_audio_settings, load_save, save_save
 
 
 class Game:
@@ -27,7 +31,9 @@ class Game:
         self.clock = pygame.time.Clock()
 
         self.assets: AssetBundle = load_assets()
-        self.current_screen: Optional[Screen] = MainMenuScreen(self.assets)
+        self.save_data: SaveData = load_save()
+        apply_audio_settings(self.save_data, self.assets.sounds)
+        self.current_screen: Optional[Screen] = MainMenuScreen(self.assets, self.save_data)
         self._running: bool = True
 
     def run(self) -> None:
@@ -40,12 +46,22 @@ class Game:
                 if event.type == pygame.QUIT:
                     self._running = False
                 if event.type == GAME_START:
-                    self.current_screen = GameScreen(self.assets)
+                    self.current_screen = GameScreen(self.assets, self.save_data)
                 if event.type == GAME_OVER:
                     score = int(getattr(event, "score", getattr(event, "dict", {}).get("score", 0)))
-                    self.current_screen = GameOverScreen(self.assets, score)
+                    if score > self.save_data.high_score:
+                        self.save_data.high_score = score
+                    self.save_data.currency += score
+                    save_save(self.save_data)
+                    self.current_screen = GameOverScreen(self.assets, self.save_data, score)
                 if event.type == GAME_RESTART:
-                    self.current_screen = GameScreen(self.assets)
+                    self.current_screen = GameScreen(self.assets, self.save_data)
+                if event.type == OPEN_SETTINGS:
+                    self.current_screen = SettingsScreen(self.assets, self.save_data)
+                if event.type == CLOSE_SETTINGS:
+                    apply_audio_settings(self.save_data, self.assets.sounds)
+                    save_save(self.save_data)
+                    self.current_screen = MainMenuScreen(self.assets, self.save_data)
 
             if self.current_screen is not None:
                 self.current_screen.handle_events(events)

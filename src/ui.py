@@ -9,18 +9,20 @@ from .asset_loader import AssetBundle
 from . import settings
 from .player import Player
 from .obstacles import PipePair
+from .data_manager import SaveData
 
 
 GAME_START = pygame.USEREVENT + 1
 GAME_OVER = pygame.USEREVENT + 2
 GAME_RESTART = pygame.USEREVENT + 3
+OPEN_SETTINGS = pygame.USEREVENT + 4
+CLOSE_SETTINGS = pygame.USEREVENT + 5
 
 
 class Screen(ABC):
-    """Базовый интерфейс для всех экранов (меню, игра, настройки и т.д.)."""
-
-    def __init__(self, assets: AssetBundle) -> None:
+    def __init__(self, assets: AssetBundle, save_data: SaveData | None = None) -> None:
         self.assets = assets
+        self.save_data = save_data
 
     @abstractmethod
     def handle_events(self, events: Iterable[pygame.event.Event]) -> None:
@@ -36,8 +38,8 @@ class Screen(ABC):
 
 
 class MainMenuScreen(Screen):
-    def __init__(self, assets: AssetBundle) -> None:
-        super().__init__(assets)
+    def __init__(self, assets: AssetBundle, save_data: SaveData | None = None) -> None:
+        super().__init__(assets, save_data)
         self._title_font = self.assets.fonts["ui_large"]
         self._small_font = self.assets.fonts["ui_small"]
 
@@ -50,6 +52,8 @@ class MainMenuScreen(Screen):
                 pygame.K_RETURN,
             ):
                 pygame.event.post(pygame.event.Event(GAME_START))
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+                pygame.event.post(pygame.event.Event(OPEN_SETTINGS))
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pygame.event.post(pygame.event.Event(GAME_START))
 
@@ -84,8 +88,8 @@ class MainMenuScreen(Screen):
 
 
 class GameScreen(Screen):
-    def __init__(self, assets: AssetBundle) -> None:
-        super().__init__(assets)
+    def __init__(self, assets: AssetBundle, save_data: SaveData | None = None) -> None:
+        super().__init__(assets, save_data)
         self.player = Player(self.assets, "blue")
         self.pipes: list[PipePair] = []
         self.score = 0
@@ -208,8 +212,8 @@ class GameScreen(Screen):
 
 
 class GameOverScreen(Screen):
-    def __init__(self, assets: AssetBundle, score: int) -> None:
-        super().__init__(assets)
+    def __init__(self, assets: AssetBundle, save_data: SaveData | None, score: int) -> None:
+        super().__init__(assets, save_data)
         self.score = score
         self._font = self.assets.fonts["ui_medium"]
 
@@ -246,4 +250,84 @@ class GameOverScreen(Screen):
         hint = self._font.render("SPACE / ЛКМ — заново", True, settings.COLOR_TEXT)
         hint_rect = hint.get_rect(center=(settings.WIDTH // 2, 260))
         surface.blit(hint, hint_rect)
+
+
+class SettingsScreen(Screen):
+    def __init__(self, assets: AssetBundle, save_data: SaveData) -> None:
+        super().__init__(assets, save_data)
+        self._font = self.assets.fonts["ui_medium"]
+        self._small_font = self.assets.fonts["ui_small"]
+        self._field_index = 0
+        self._api_key_buffer = self.save_data.settings_data.get("openai_api_key", "")
+
+    def handle_events(self, events: Iterable[pygame.event.Event]) -> None:
+        for event in events:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    pygame.event.post(pygame.event.Event(CLOSE_SETTINGS))
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    self._field_index = (self._field_index - 1) % 3
+                if event.key in (pygame.K_DOWN, pygame.K_s):
+                    self._field_index = (self._field_index + 1) % 3
+                if event.key in (pygame.K_LEFT, pygame.K_a):
+                    self._adjust_value(-0.1)
+                if event.key in (pygame.K_RIGHT, pygame.K_d):
+                    self._adjust_value(0.1)
+                if self._field_index == 2:
+                    if event.key == pygame.K_BACKSPACE:
+                        self._api_key_buffer = self._api_key_buffer[:-1]
+                    elif event.key == pygame.K_RETURN:
+                        self._apply_changes()
+                        pygame.event.post(pygame.event.Event(CLOSE_SETTINGS))
+                    else:
+                        if event.unicode and not event.unicode.isspace():
+                            self._api_key_buffer += event.unicode
+
+    def _adjust_value(self, delta: float) -> None:
+        if self._field_index == 0:
+            v = float(self.save_data.settings_data.get("music_volume", settings.DEFAULT_MUSIC_VOLUME))
+            v = max(0.0, min(1.0, v + delta))
+            self.save_data.settings_data["music_volume"] = v
+        if self._field_index == 1:
+            v = float(self.save_data.settings_data.get("sfx_volume", settings.DEFAULT_SFX_VOLUME))
+            v = max(0.0, min(1.0, v + delta))
+            self.save_data.settings_data["sfx_volume"] = v
+
+    def _apply_changes(self) -> None:
+        self.save_data.settings_data["openai_api_key"] = self._api_key_buffer
+
+    def update(self, dt: float) -> None:
+        _ = dt
+
+    def draw(self, surface: pygame.Surface) -> None:
+        background = self.assets.sprites["background_day"]
+        base = self.assets.sprites["base"]
+        surface.blit(background, (0, 0))
+        base_y = settings.HEIGHT - base.get_height()
+        surface.blit(base, (0, base_y))
+
+        title = self._font.render("Настройки", True, settings.COLOR_TEXT)
+        title_rect = title.get_rect(center=(settings.WIDTH // 2, 80))
+        surface.blit(title, title_rect)
+
+        music_volume = float(self.save_data.settings_data.get("music_volume", settings.DEFAULT_MUSIC_VOLUME))
+        sfx_volume = float(self.save_data.settings_data.get("sfx_volume", settings.DEFAULT_SFX_VOLUME))
+        api_key_display = "*" * len(self._api_key_buffer) if self._api_key_buffer else "(пусто)"
+
+        items = [
+            f"Музыка: {music_volume:.1f}",
+            f"SFX: {sfx_volume:.1f}",
+            f"OpenAI Key: {api_key_display}",
+        ]
+
+        y = 150
+        for index, text in enumerate(items):
+            color = settings.COLOR_TEXT
+            if index == self._field_index:
+                label = self._font.render(text, True, color)
+            else:
+                label = self._small_font.render(text, True, color)
+            rect = label.get_rect(center=(settings.WIDTH // 2, y))
+            surface.blit(label, rect)
+            y += 40
 
