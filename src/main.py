@@ -8,6 +8,7 @@ import pygame
 from . import settings
 from .asset_loader import AssetBundle, load_assets
 from .ui import (
+    BACK_TO_MENU,
     CLOSE_SETTINGS,
     CLOSE_ORACLE,
     CLOSE_WARDROBE,
@@ -79,6 +80,8 @@ class Game:
                     self.current_screen = OracleScreen(self.assets, self.save_data)
                 if event.type == CLOSE_ORACLE:
                     save_save(self.save_data)
+                    self.current_screen = MainMenuScreen(self.assets, self.save_data)
+                if event.type == BACK_TO_MENU:
                     self.current_screen = MainMenuScreen(self.assets, self.save_data)
 
             if self.current_screen is not None:

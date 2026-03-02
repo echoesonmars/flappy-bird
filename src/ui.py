@@ -22,6 +22,7 @@ OPEN_WARDROBE = pygame.USEREVENT + 6
 CLOSE_WARDROBE = pygame.USEREVENT + 7
 OPEN_ORACLE = pygame.USEREVENT + 8
 CLOSE_ORACLE = pygame.USEREVENT + 9
+BACK_TO_MENU = pygame.USEREVENT + 10
 
 
 class Screen(ABC):
@@ -47,6 +48,26 @@ class MainMenuScreen(Screen):
         super().__init__(assets, save_data)
         self._title_font = self.assets.fonts["ui_large"]
         self._small_font = self.assets.fonts["ui_small"]
+        self._buttons: list[tuple[str, pygame.Rect, int]] = []
+        self._init_buttons()
+
+    def _init_buttons(self) -> None:
+        labels_events: list[tuple[str, int]] = [
+            ("Играть", GAME_START),
+            ("Гардероб", OPEN_WARDROBE),
+            ("Оракул", OPEN_ORACLE),
+            ("Настройки", OPEN_SETTINGS),
+        ]
+        button_width = int(settings.WIDTH * 0.6)
+        button_height = 40
+        gap = 12
+        start_y = 180
+        x = (settings.WIDTH - button_width) // 2
+        self._buttons.clear()
+        for index, (label, event_type) in enumerate(labels_events):
+            y = start_y + index * (button_height + gap)
+            rect = pygame.Rect(x, y, button_width, button_height)
+            self._buttons.append((label, rect, event_type))
 
     def handle_events(self, events: Iterable[pygame.event.Event]) -> None:
         for event in events:
@@ -64,7 +85,11 @@ class MainMenuScreen(Screen):
             if event.type == pygame.KEYDOWN and event.key == pygame.K_o:
                 pygame.event.post(pygame.event.Event(OPEN_ORACLE))
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                pygame.event.post(pygame.event.Event(GAME_START))
+                pos = event.pos
+                for _, rect, event_type in self._buttons:
+                    if rect.collidepoint(pos):
+                        pygame.event.post(pygame.event.Event(event_type))
+                        break
 
     def update(self, dt: float) -> None:
         _ = dt
@@ -93,21 +118,12 @@ class MainMenuScreen(Screen):
             meta_rect = meta.get_rect(center=(settings.WIDTH // 2, 115))
             surface.blit(meta, meta_rect)
 
-        hint_main = self._small_font.render(
-            "SPACE / ЛКМ — начать",
-            True,
-            settings.COLOR_TEXT,
-        )
-        hint_main_rect = hint_main.get_rect(center=(settings.WIDTH // 2, 140))
-        surface.blit(hint_main, hint_main_rect)
-
-        hint_settings = self._small_font.render(
-            "S — настройки, K — скины, O — Оракул",
-            True,
-            settings.COLOR_TEXT,
-        )
-        hint_settings_rect = hint_settings.get_rect(center=(settings.WIDTH // 2, 180))
-        surface.blit(hint_settings, hint_settings_rect)
+        for label, rect, _event_type in self._buttons:
+            pygame.draw.rect(surface, (0, 0, 0), rect)
+            pygame.draw.rect(surface, settings.COLOR_TEXT, rect, 2)
+            text_surf = self._small_font.render(label, True, settings.COLOR_TEXT)
+            text_rect = text_surf.get_rect(center=rect.center)
+            surface.blit(text_surf, text_rect)
 
 
 class GameScreen(Screen):
@@ -253,8 +269,28 @@ class GameOverScreen(Screen):
         self.score = score
         self._font = self.assets.fonts["ui_medium"]
         self.ai_text = ""
+        self._buttons: list[tuple[str, pygame.Rect, int]] = []
+        self._init_buttons()
         if self.save_data is not None:
             ai_core.request_game_over_message(self.save_data, score, reason, self._on_ai_text)
+
+    def _init_buttons(self) -> None:
+        labels_events: list[tuple[str, int]] = [
+            ("Ещё раз", GAME_RESTART),
+            ("Настройки", OPEN_SETTINGS),
+            ("В меню", BACK_TO_MENU),
+        ]
+        button_width = int(settings.WIDTH * 0.28)
+        button_height = 40
+        gap = 12
+        total_width = button_width * len(labels_events) + gap * (len(labels_events) - 1)
+        start_x = (settings.WIDTH - total_width) // 2
+        y = settings.HEIGHT - 120
+        self._buttons.clear()
+        for index, (label, event_type) in enumerate(labels_events):
+            x = start_x + index * (button_width + gap)
+            rect = pygame.Rect(x, y, button_width, button_height)
+            self._buttons.append((label, rect, event_type))
 
     def _on_ai_text(self, text: str) -> None:
         self.ai_text = text
@@ -267,7 +303,11 @@ class GameOverScreen(Screen):
                 if event.key in (pygame.K_SPACE, pygame.K_RETURN):
                     pygame.event.post(pygame.event.Event(GAME_RESTART))
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                pygame.event.post(pygame.event.Event(GAME_RESTART))
+                pos = event.pos
+                for _, rect, event_type in self._buttons:
+                    if rect.collidepoint(pos):
+                        pygame.event.post(pygame.event.Event(event_type))
+                        break
 
     def update(self, dt: float) -> None:
         _ = dt
@@ -298,9 +338,12 @@ class GameOverScreen(Screen):
                 surface.blit(line_surf, line_rect)
                 y += 26
 
-        hint = self._font.render("SPACE / ЛКМ — заново", True, settings.COLOR_TEXT)
-        hint_rect = hint.get_rect(center=(settings.WIDTH // 2, settings.HEIGHT - 60))
-        surface.blit(hint, hint_rect)
+        for label, rect, _event_type in self._buttons:
+            pygame.draw.rect(surface, (0, 0, 0), rect)
+            pygame.draw.rect(surface, settings.COLOR_TEXT, rect, 2)
+            text_surf = self._font.render(label, True, settings.COLOR_TEXT)
+            text_rect = text_surf.get_rect(center=rect.center)
+            surface.blit(text_surf, text_rect)
 
     def _wrap_text(self, text: str, max_len: int) -> list[str]:
         words = text.split()
