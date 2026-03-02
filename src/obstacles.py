@@ -9,12 +9,8 @@ from .asset_loader import AssetBundle
 from . import settings
 
 
-class PipePair(pygame.sprite.Sprite):
-    """Пара труб (верхняя + нижняя) с зазором."""
-
+class PipePair:
     def __init__(self, assets: AssetBundle, x: int) -> None:
-        super().__init__()
-
         self.assets = assets
 
         pipe_surface = self.assets.sprites["pipe_green"]
@@ -26,7 +22,7 @@ class PipePair(pygame.sprite.Sprite):
 
         self._set_initial_position(x)
 
-        self.passed: bool = False  # для начисления очков
+        self.passed: bool = False
 
     def _set_initial_position(self, x: int) -> None:
         gap_y = random.randint(120, settings.HEIGHT - 120)

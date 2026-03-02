@@ -7,12 +7,18 @@ import pygame
 
 from . import settings
 from .asset_loader import AssetBundle, load_assets
-from .ui import MainMenuScreen, Screen
+from .ui import (
+    GAME_OVER,
+    GAME_RESTART,
+    GAME_START,
+    GameOverScreen,
+    GameScreen,
+    MainMenuScreen,
+    Screen,
+)
 
 
 class Game:
-    """Главный объект игры: окно, цикл и текущий экран."""
-
     def __init__(self) -> None:
         pygame.init()
         pygame.display.set_caption(settings.TITLE)
@@ -21,9 +27,7 @@ class Game:
         self.clock = pygame.time.Clock()
 
         self.assets: AssetBundle = load_assets()
-
-        # Пока только главное меню; позже сюда добавится машина состояний
-        self.current_screen: Screen = MainMenuScreen(self.assets)
+        self.current_screen: Optional[Screen] = MainMenuScreen(self.assets)
         self._running: bool = True
 
     def run(self) -> None:
@@ -35,10 +39,18 @@ class Game:
             for event in events:
                 if event.type == pygame.QUIT:
                     self._running = False
+                if event.type == GAME_START:
+                    self.current_screen = GameScreen(self.assets)
+                if event.type == GAME_OVER:
+                    score = int(getattr(event, "score", getattr(event, "dict", {}).get("score", 0)))
+                    self.current_screen = GameOverScreen(self.assets, score)
+                if event.type == GAME_RESTART:
+                    self.current_screen = GameScreen(self.assets)
 
-            self.current_screen.handle_events(events)
-            self.current_screen.update(dt)
-            self.current_screen.draw(self.screen)
+            if self.current_screen is not None:
+                self.current_screen.handle_events(events)
+                self.current_screen.update(dt)
+                self.current_screen.draw(self.screen)
 
             pygame.display.flip()
 

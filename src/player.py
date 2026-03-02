@@ -9,8 +9,6 @@ from . import settings
 
 
 class Player(pygame.sprite.Sprite):
-    """Игрок: анимированная птица/дрон с простой физикой."""
-
     def __init__(self, assets: AssetBundle, color: str = "blue") -> None:
         super().__init__()
 
