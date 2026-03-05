@@ -1,4 +1,4 @@
-# Flappy Oracle
+# Flappy Oracle (NIS Programming)
 
 Игровой прототип на `pygame`, вдохновлённый Flappy Bird, с техно-мистическим вайбом и интеграцией OpenAI как Оракула.
 
